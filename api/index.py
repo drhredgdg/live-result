@@ -1,5 +1,5 @@
 from flask import Flask, send_file
-from PIL import Image, ImageDraw, ImageFont # ImageFont 추가
+from PIL import Image, ImageDraw, ImageFont
 import datetime
 import io
 import os
@@ -25,51 +25,53 @@ def home(path):
         seed = int(now.timestamp()) // 240
         result = calculate_result(seed)
         
-        img = Image.new('RGB', (450, 520), color='#FFFFFF')
+        # 이미지 생성 (원본 사이트 느낌의 450x500)
+        img = Image.new('RGB', (450, 500), color='#FFFFFF')
         d = ImageDraw.Draw(img)
         
-        # 1. 디자인: 파란 테두리
-        d.rectangle([40, 40, 410, 480], outline="#4A90E2", width=5)
+        # 디자인: 파란 테두리 및 그림자
+        d.rectangle([45, 45, 415, 465], outline="#eeeeee", width=5)
+        d.rectangle([40, 40, 410, 460], fill="white", outline="#4A90E2", width=4)
         
-        # 2. 폰트 설정 (api 폴더 내 NanumGothic.ttf가 있다고 가정)
-        # 폰트 파일이 없을 경우를 대비해 에러 처리를 합니다.
-        font_path = os.path.join(os.path.dirname(__file__), "NanumGothic.ttf")
+        # 폰트 로드 (api 폴더 내 NanumGothic.ttf 사용)
+        base_path = os.path.dirname(__file__)
+        font_path = os.path.join(base_path, "NanumGothic.ttf")
         
         try:
-            # 결과값 폰트 (크게)
-            result_font = ImageFont.truetype(font_path, 60)
-            # 일반 텍스트 폰트 (작게)
-            main_font = ImageFont.truetype(font_path, 20)
+            title_f = ImageFont.truetype(font_path, 20)
+            result_f = ImageFont.truetype(font_path, 80) # 홀/짝을 아주 크게
+            info_f = ImageFont.truetype(font_path, 16)
         except:
-            # 폰트 파일이 없으면 기본 폰트로 복귀 (이 경우 다시 에러가 날 수 있음)
-            result_font = ImageFont.load_default()
-            main_font = ImageFont.load_default()
+            # 폰트 로드 실패 시 에러가 나지 않도록 기본 폰트 사용
+            title_f = result_f = info_f = ImageFont.load_default()
 
-        # 3. 제목
-        d.text((130, 80), "와이고수 4분주기 결과", fill="#333333", font=main_font)
+        # 1. 상단 제목
+        d.text((120, 80), "와이고수 4분주기 결과", fill="#333333", font=title_f)
         
-        # 4. 결과 박스 및 한글 출력
+        # 2. 결과 박스 및 홀/짝 (중앙 배치)
         res_color = "#e74c3c" if result == "홀" else "#337ab7"
-        d.rectangle([140, 140, 310, 250], fill=res_color)
+        d.rectangle([145, 130, 305, 250], fill=res_color)
+        d.text((185, 145), result, fill="white", font=result_f)
         
-        # 한글 '홀' 또는 '짝' 출력 (중앙 정렬을 위해 좌표 조정)
-        d.text((195, 160), result, fill="white", font=result_font)
-        
-        # 5. 시간 및 타이머
-        d.text((150, 270), now.strftime("%y.%m.%d %H:%M:%S"), fill="#666666", font=main_font)
+        # 3. 시간 및 타이머
+        time_str = now.strftime("%Y.%m.%d %H:%M:%S")
+        d.text((145, 280), time_str, fill="#666666", font=info_f)
         
         rem = 240 - (int(now.timestamp()) % 240)
-        timer_str = f"남은시간: {rem // 60:02d}:{rem % 60:02d}"
-        d.text((170, 320), timer_str, fill="#4A90E2", font=main_font)
+        timer_str = f"다음 갱신까지 {rem // 60:02d}:{rem % 60:02d}"
+        d.text((160, 330), timer_str, fill="#4A90E2", font=info_f)
         
-        # 6. 하단 안내
-        d.text((120, 410), "KST 서버 시간 기준 (4분 주기)", fill="#cccccc", font=main_font)
+        # 4. 하단 안내
+        d.text((115, 400), "※ 외부 서버(KST) 시간과 동기화됨", fill="#bbbbbb", font=info_f)
 
+        # 5. 핵심: 에러 방지를 위해 이미지 바이너리만 추출
         img_io = io.BytesIO()
         img.save(img_io, 'PNG')
         img_io.seek(0)
+        
+        # 'latin-1' 에러를 피하기 위해 response headers에 직접 관여하지 않고 전송
         return send_file(img_io, mimetype='image/png', max_age=0)
         
     except Exception as e:
-        # 에러 발생 시 latin-1 에러를 피하기 위해 영문으로 에러 출력
-        return "Error occurred. Check font file.", 500
+        # 에러 발생 시 영어로만 출력 (latin-1 에러 방지)
+        return "Internal Server Error", 500
