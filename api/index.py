@@ -1,67 +1,73 @@
 from flask import Flask, send_file
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 import datetime
 import io
 
 app = Flask(__name__)
 
-def calculate_hash_result(seed):
-    # game.html의 BigInt 해싱 로직 (결과값 100% 일치)
+def calculate_result(seed):
+    # game.html의 해싱 로직 (BigInt 대응)
     hash_val = int(seed) * 16777619
     hash_val = (hash_val ^ (hash_val >> 13)) * 131
     hash_val = (hash_val ^ (hash_val >> 15))
-    last_digit = int(hex(hash_val)[-1], 16)
-    return "홀" if last_digit % 2 != 0 else "짝"
+    last_char = hex(hash_val)[-1]
+    try:
+        digit = int(last_char, 16)
+    except:
+        digit = 0
+    return "ODD" if digit % 2 != 0 else "EVEN"
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-def get_image(path):
+def home(path):
     try:
-        # 1. 데이터 계산
+        # 1. 한국 시간 계산
         now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
         seed = int(now.timestamp()) // 240
-        result = calculate_hash_result(seed)
+        result = calculate_result(seed)
         
-        # 2. 캔버스 설정 (전체 배경색: 흰색)
-        img = Image.new('RGB', (500, 550), color='#FFFFFF')
+        # 2. 이미지 생성 (원본 사이트와 비슷한 500x500 사이즈)
+        img = Image.new('RGB', (500, 500), color='#FFFFFF')
         d = ImageDraw.Draw(img)
         
-        # 3. 그림자 및 둥근 카드 (Shadow & Card)
-        # 그림자 효과를 위해 살짝 어두운 사각형을 먼저 그림
-        d.rounded_rectangle([75, 75, 425, 475], radius=20, fill="#E0E0E0")
-        # 메인 카드 본체
-        d.rounded_rectangle([70, 70, 420, 470], radius=20, fill="white", outline="#4A90E2", width=4)
+        # 3. 디자인 재현 (그림자 효과 및 라운드 테두리 대용 사각형)
+        # 그림자 레이어
+        d.rectangle([55, 55, 445, 445], fill="#f0f0f0") 
+        # 메인 카드 (파란색 테두리: #4A90E2)
+        d.rectangle([50, 50, 440, 440], fill="white", outline="#4A90E2", width=4)
         
-        # 4. 상단 제목 (🎲 와이고수 4분주기 홀짝 결과)
-        d.text((150, 100), "🎲 YGOSU 4MIN RESULT", fill="#333333")
+        # 4. 텍스트 배치 (에러 원인인 이모지 🎲 삭제)
+        # 제목
+        d.text((150, 80), "YGOSU 4MIN ODD-EVEN", fill="#333333")
         
-        # 5. 중앙 결과값 (홀/짝) - 크게 강조
-        res_color = "#E74C3C" if result == "홀" else "#337AB7"
-        # 폰트 깨짐 방지를 위해 큰 사각형 박스로 결과 표현
-        d.rectangle([160, 160, 330, 240], fill=res_color)
+        # 결과값 강조 (홀/짝 색상)
+        res_color = "#e74c3c" if result == "ODD" else "#337ab7"
+        # 중앙 큰 박스
+        d.rectangle([150, 140, 350, 240], fill=res_color)
+        # 결과 글자 (서버 한글 깨짐 방지를 위해 영어 사용)
+        d.text((220, 180), result, fill="white")
         
-        # 결과 텍스트 (영문이 안 깨지므로 병기)
-        display_text = f"{result} (ODD)" if result == "홀" else f"{result} (EVEN)"
-        d.text((200, 190), display_text, fill="white")
-        
-        # 6. 중간 날짜/시간 (26.01.15.02:16 형태)
+        # 5. 시간 정보 (원본 형식: 26.01.15.02:16)
         time_label = now.strftime("%y.%m.%d.%H:%M")
-        d.text((180, 270), time_label, fill="#666666")
+        d.text((195, 260), time_label, fill="#666666")
         
-        # 7. 타이머 (03:34 형태 - 파란색 굵게)
+        # 6. 타이머 (가운데 정렬 느낌)
         rem = 240 - (int(now.timestamp()) % 240)
         timer_str = f"{rem // 60:02d}:{rem % 60:02d}"
-        d.text((215, 320), timer_str, fill="#4A90E2")
+        d.text((230, 310), timer_str, fill="#4A90E2")
         
-        # 8. 하단 문구
-        d.text((170, 370), "다음 결과 변경 시각: " + (now + datetime.timedelta(seconds=rem)).strftime("%H:%M"), fill="#999999")
-        d.text((120, 420), "※ 이 결과는 외부 서버 시간(KST)을 기준으로 합니다.", fill="#CCCCCC")
+        # 7. 하단 설명
+        d.text((160, 360), f"NEXT CHANGE: { (now + datetime.timedelta(seconds=rem)).strftime('%H:%M') }", fill="#999999")
+        d.text((120, 400), "KST SERVER TIME STANDARD", fill="#cccccc")
 
-        # 9. 이미지 전송
+        # 8. 이미지 전송 (에러 방지를 위해 BytesIO 사용)
         img_io = io.BytesIO()
         img.save(img_io, 'PNG')
         img_io.seek(0)
+        
+        # max_age=0으로 실시간 갱신 처리
         return send_file(img_io, mimetype='image/png', max_age=0)
         
     except Exception as e:
+        # 에러 발생 시 텍스트로 표시
         return str(e), 500
