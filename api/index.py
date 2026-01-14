@@ -1,12 +1,12 @@
 from flask import Flask, send_file
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont # ImageFont 추가
 import datetime
 import io
+import os
 
 app = Flask(__name__)
 
 def calculate_result(seed):
-    # game.html 해싱 로직과 100% 일치
     hash_val = int(seed) * 16777619
     hash_val = (hash_val ^ (hash_val >> 13)) * 131
     hash_val = (hash_val ^ (hash_val >> 15))
@@ -25,41 +25,45 @@ def home(path):
         seed = int(now.timestamp()) // 240
         result = calculate_result(seed)
         
-        # 캔버스 및 카드 디자인 (흰색 배경)
         img = Image.new('RGB', (450, 520), color='#FFFFFF')
         d = ImageDraw.Draw(img)
         
-        # 1. 둥근 사각형 느낌의 파란 테두리
-        d.rectangle([40, 40, 410, 480], fill="white", outline="#4A90E2", width=5)
+        # 1. 디자인: 파란 테두리
+        d.rectangle([40, 40, 410, 480], outline="#4A90E2", width=5)
         
-        # 2. 상단 제목 (한글 깨짐 대비해 영문/한글 혼용 시도)
-        d.text((130, 80), "YGOSU 4MIN RESULT", fill="#333333")
+        # 2. 폰트 설정 (api 폴더 내 NanumGothic.ttf가 있다고 가정)
+        # 폰트 파일이 없을 경우를 대비해 에러 처리를 합니다.
+        font_path = os.path.join(os.path.dirname(__file__), "NanumGothic.ttf")
         
-        # 3. 결과값 표시 (가장 중요한 부분!)
+        try:
+            # 결과값 폰트 (크게)
+            result_font = ImageFont.truetype(font_path, 60)
+            # 일반 텍스트 폰트 (작게)
+            main_font = ImageFont.truetype(font_path, 20)
+        except:
+            # 폰트 파일이 없으면 기본 폰트로 복귀 (이 경우 다시 에러가 날 수 있음)
+            result_font = ImageFont.load_default()
+            main_font = ImageFont.load_default()
+
+        # 3. 제목
+        d.text((130, 80), "와이고수 4분주기 결과", fill="#333333", font=main_font)
+        
+        # 4. 결과 박스 및 한글 출력
         res_color = "#e74c3c" if result == "홀" else "#337ab7"
+        d.rectangle([140, 140, 310, 250], fill=res_color)
         
-        # 글자가 깨질 것을 대비해 "색상 박스"를 더 크게 그리고
-        # 박스 안에 결과값을 넣습니다.
-        d.rectangle([140, 140, 310, 240], fill=res_color)
+        # 한글 '홀' 또는 '짝' 출력 (중앙 정렬을 위해 좌표 조정)
+        d.text((195, 160), result, fill="white", font=result_font)
         
-        # 서버에 한글 폰트가 없으면 '홀/짝'이 깨질 수 있으므로
-        # 박스 위에 'ODD' 또는 'EVEN'을 크게 쓰고, 
-        # 그 아래에 작게 한글을 병기하거나 색상으로 구분하게 만듭니다.
-        # (만약 한글 폰트가 잡히면 정상적으로 '홀/짝'이 나옵니다)
-        display_text = f"{result}" 
-        d.text((210, 180), display_text, fill="white")
-        
-        # 4. 시간 및 타이머 정보
-        time_label = now.strftime("%y.%m.%d %H:%M:%S")
-        d.text((150, 260), time_label, fill="#666666")
+        # 5. 시간 및 타이머
+        d.text((150, 270), now.strftime("%y.%m.%d %H:%M:%S"), fill="#666666", font=main_font)
         
         rem = 240 - (int(now.timestamp()) % 240)
-        timer_str = f"{rem // 60:02d}:{rem % 60:02d}"
-        d.text((200, 310), timer_str, fill="#4A90E2")
+        timer_str = f"남은시간: {rem // 60:02d}:{rem % 60:02d}"
+        d.text((170, 320), timer_str, fill="#4A90E2", font=main_font)
         
-        # 5. 하단 안내
-        d.text((140, 380), "NEXT: " + (now + datetime.timedelta(seconds=rem)).strftime("%H:%M"), fill="#999999")
-        d.text((120, 420), "KST SERVER TIME STANDARD", fill="#cccccc")
+        # 6. 하단 안내
+        d.text((120, 410), "KST 서버 시간 기준 (4분 주기)", fill="#cccccc", font=main_font)
 
         img_io = io.BytesIO()
         img.save(img_io, 'PNG')
@@ -67,4 +71,5 @@ def home(path):
         return send_file(img_io, mimetype='image/png', max_age=0)
         
     except Exception as e:
-        return str(e), 500
+        # 에러 발생 시 latin-1 에러를 피하기 위해 영문으로 에러 출력
+        return "Error occurred. Check font file.", 500
